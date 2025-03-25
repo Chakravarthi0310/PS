@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "133788893267",
+    "project_id": "paysync-329b1",
+    "storage_bucket": "paysync-329b1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:133788893267:android:ec2fe672b92136de0b06a6",
+        "android_client_info": {
+          "package_name": "com.example.paysync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHbZuZ8rISLE6MgzeIm7tLavjAy-1evTQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
