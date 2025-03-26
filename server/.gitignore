@@ -13,7 +13,8 @@ target/
 .springBeans
 .sts4-cache
 
-server\src\main\resources\firebase-service-account.json
+src/main/resources/firebase-service-account.json
+
 
 ### IntelliJ IDEA ###
 .idea
