@@ -12,9 +12,7 @@ target/
 .settings
 .springBeans
 .sts4-cache
-
-src/main/resources/firebase-service-account.json
-
+./server/src/main/resources/serviceAccountKey.json
 
 ### IntelliJ IDEA ###
 .idea
@@ -34,3 +32,16 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Firebase ###
+**/serviceAccountKey.json
+**/firebase-config.json
+
+### Environment Variables ###
+.env
+.env.local
+.env.*.local
+
+### Logs ###
+*.log
+logs/

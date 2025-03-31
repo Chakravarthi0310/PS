@@ -38,6 +38,26 @@ dependencies:
   get: ^4.7.2
   firebase_auth: ^5.5.1
   http: ^1.3.0
+  pinput: ^5.0.1
+  google_sign_in: ^6.3.0
+  cloud_firestore: ^5.6.5
+  fl_chart: ^0.70.2
+  sqflite: ^2.4.2
+  path: ^1.9.1
+  image_picker: ^1.1.2
+  animated_text_kit: ^4.2.3
+  geolocator: ^13.0.3
+  geocoding: ^3.0.0
+  uuid: ^4.5.1
+  intl: ^0.19.0
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+  share_plus: ^10.1.4
+  syncfusion_flutter_charts: ^29.1.33
+  syncfusion_flutter_gauges: ^29.1.33
+  connectivity_plus: ^6.1.3
+  firebase_messaging: ^15.2.5
+  flutter_local_notifications: ^19.0.0
 
 dev_dependencies:
   flutter_test:
@@ -55,6 +75,11 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  assets:
+    - assets/track_expenses.png
+    - assets/budget_planning.png
+    - assets/savings.png
+    - assets/google_logo.jpg
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
