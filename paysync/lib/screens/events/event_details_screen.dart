@@ -8,6 +8,8 @@ import 'package:paysync/utils/currency_formatter.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:paysync/database/database_helper.dart';
 import 'package:paysync/models/transaction_model.dart';
+import 'package:paysync/widgets/member_management_widget.dart';
+import 'package:paysync/screens/events/event_transactions_screen.dart';
 
 class EventDetailsScreen extends StatelessWidget {
   final EventModel event;
@@ -31,7 +33,11 @@ class EventDetailsScreen extends StatelessWidget {
                 _buildEventSummaryCard(),
                 // _buildBudgetSection(),
                 _buildBudgetProgress(context),
-                _buildMembersSection(),
+                MemberManagementWidget(
+                  event: event,
+                  currentUserId: currentUser.userId,
+                ),
+
                 _buildTransactionsSection(context),
               ],
             ),
@@ -581,64 +587,17 @@ class EventDetailsScreen extends StatelessWidget {
     return Colors.green; // Well within budget
   }
 
-  Widget _buildMembersSection() {
-    return Padding(
-      padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Members',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              TextButton.icon(
-                onPressed: () {
-                  // TODO: Implement add member
-                },
-                icon: Icon(Icons.person_add),
-                label: Text('Add'),
-              ),
-            ],
-          ),
-          SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children:
-                event.members.map((member) {
-                  return Chip(
-                    avatar: CircleAvatar(
-                      child: Text(
-                        member[0].toUpperCase(),
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    label: Text(member),
-                    deleteIcon: Icon(Icons.close, size: 16),
-                    onDeleted: () {
-                      // TODO: Implement remove member
-                    },
-                  );
-                }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // In the _buildTransactionsSection method, add a "View All" button
   Widget _buildTransactionsSection(BuildContext context) {
     return FutureBuilder<List<TransactionModel>>(
       future: _getEventTransactions(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator());
         }
 
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return Padding(
+          return const Padding(
             padding: EdgeInsets.all(16),
             child: Center(child: Text('No transactions yet')),
           );
@@ -647,19 +606,42 @@ class EventDetailsScreen extends StatelessWidget {
         final transactions = snapshot.data!;
 
         return Padding(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Recent Transactions',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Recent Transactions',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => EventTransactionsScreen(
+                                event: event,
+                                currentUser: currentUser,
+                              ),
+                        ),
+                      );
+                    },
+                    child: const Text('View All'),
+                  ),
+                ],
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               ListView.builder(
                 shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                itemCount: transactions.length,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: transactions.length.clamp(
+                  0,
+                  5,
+                ), // Show only recent 5
                 itemBuilder: (context, index) {
                   final transaction = transactions[index];
                   return TransactionCard(

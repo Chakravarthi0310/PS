@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -38,21 +39,37 @@ class _SignupScreenState extends State<SignupScreen> {
         credential,
       );
 
-      // Sync user data before navigation
-      await SyncService.initialSync(userCredential.user!.uid);
+      // Check if user data exists in Firestore
+      final userDoc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .get();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Successfully logged in with Google'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => MainScreen()),
-        );
+      if (!userDoc.exists) {
+        // New user - navigate to UserDetails screen
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder:
+                  (context) => UserDetailsScreen(
+                    userId: userCredential.user!.uid,
+                    email: userCredential.user!.email,
+                    isGoogleSignIn: true,
+                  ),
+            ),
+          );
+        }
+      } else {
+        // Existing user - sync and navigate to MainScreen
+        await SyncService.initialSync(userCredential.user!.uid);
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => MainScreen()),
+          );
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

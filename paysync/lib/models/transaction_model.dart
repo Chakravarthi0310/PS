@@ -17,8 +17,8 @@ class TransactionModel {
   final String? recurringType;
   final DateTime createdAt;
   final DateTime updatedAt;
-  final double onlineBalanceAfter;    // New field
-  final double offlineBalanceAfter;   // New field
+  final double onlineBalanceAfter; // New field
+  final double offlineBalanceAfter; // New field
 
   TransactionModel({
     required this.transactionId,
@@ -37,10 +37,34 @@ class TransactionModel {
     this.recurringType,
     required this.createdAt,
     required this.updatedAt,
-    required this.onlineBalanceAfter,    // Add to constructor
-    required this.offlineBalanceAfter,   // Add to constructor
+    required this.onlineBalanceAfter, // Add to constructor
+    required this.offlineBalanceAfter, // Add to constructor
   });
-
+  factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    return TransactionModel(
+      transactionId: doc.id,
+      eventId: data['eventId'] ?? '',
+      userId: data['userId'] ?? '',
+      amount: (data['amount'] ?? 0.0).toDouble(),
+      isCredit: data['isCredit'] ?? false,
+      note: data['note'],
+      dateTime: (data['dateTime'] as Timestamp).toDate(),
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      isOnline: data['isOnline'] ?? false,
+      currency: data['currency'] ?? 'USD',
+      paymentMethod: data['paymentMethod'] ?? '',
+      location: data['location'] ?? '',
+      imageUrl: data['imageUrl'],
+      recurring: data['recurring'] ?? false,
+      recurringType: data['recurringType'],
+      onlineBalanceAfter:
+          (data['onlineBalanceAfter'] ?? data['amount'] ?? 0).toDouble(),
+      offlineBalanceAfter:
+          (data['offlineBalanceAfter'] ?? data['amount'] ?? 0).toDouble(),
+    );
+  }
   Map<String, dynamic> toMap() {
     return {
       'transactionId': transactionId,
@@ -59,8 +83,8 @@ class TransactionModel {
       'recurringType': recurringType,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
-      'onlineBalanceAfter': onlineBalanceAfter,    // Add to map
-      'offlineBalanceAfter': offlineBalanceAfter,  // Add to map
+      'onlineBalanceAfter': onlineBalanceAfter, // Add to map
+      'offlineBalanceAfter': offlineBalanceAfter, // Add to map
     };
   }
 
@@ -83,8 +107,10 @@ class TransactionModel {
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       // Add null-safe handling for new fields
-      onlineBalanceAfter: (map['onlineBalanceAfter'] ?? map['amount'] ?? 0).toDouble(),
-      offlineBalanceAfter: (map['offlineBalanceAfter'] ?? map['amount'] ?? 0).toDouble(),
+      onlineBalanceAfter:
+          (map['onlineBalanceAfter'] ?? map['amount'] ?? 0).toDouble(),
+      offlineBalanceAfter:
+          (map['offlineBalanceAfter'] ?? map['amount'] ?? 0).toDouble(),
     );
   }
 }

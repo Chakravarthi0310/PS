@@ -26,20 +26,59 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   DateTimeRange? _selectedDateRange;
   bool? _isOnline;
 
+  // Add this map to store event names
+  final Map<String, String> _eventNames = {};
+
   @override
   void initState() {
     super.initState();
     _loadTransactions();
+    _loadEventNames(); // Add this line
   }
+
+  // Add this method to load event names
+  Future<void> _loadEventNames() async {
+    final eventIds = _transactions.map((t) => t.eventId).toSet().toList();
+    print('Event IDs: ${eventIds.length}');
+    for (String eventId in eventIds) {
+      final event = await _dbHelper.getEvent(eventId);
+      if (event != null) {
+        setState(() {
+          _eventNames[eventId] = event.nameOfEvent;
+        });
+      }
+    }
+  }
+
+  // Update the _getUniqueEvents method
+  List<String> _getUniqueEvents() {
+    final eventNames =
+        _transactions
+            .where((t) => t.eventId.isNotEmpty)
+            .map((t) => _eventNames[t.eventId] ?? 'Default Event')
+            .toSet()
+            .toList();
+    return eventNames;
+  }
+
+  // Update the _applyFilters method's event filter section
 
   Future<void> _loadTransactions() async {
     final transactions = await _dbHelper.getUserTransactions(
       widget.currentUser.userId,
     );
+    print('All Transactions loaded:');
+    for (var transaction in transactions) {
+      print(
+        'Transaction: ID=${transaction.transactionId}, EventID=${transaction.eventId}, Amount=${transaction.amount}, PaymentMethod=${transaction.paymentMethod}',
+      );
+    }
     setState(() {
       _transactions = transactions;
       _applyFilters();
     });
+    print('Transactions loaded: ${_transactions.first}');
+    await _loadEventNames(); // Load event names before applying filters
   }
 
   void _applyFilters() {
@@ -64,7 +103,22 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               )
               .toList();
     }
+    if (_selectedEvent != null && _selectedEvent != 'All') {
+      if (_selectedEvent == 'Default Event') {
+        print("selected event: $_selectedEvent");
 
+        filtered = filtered.where((t) => t.eventId == 'default').toList();
+      } else {
+        final eventId =
+            _eventNames.entries
+                .firstWhere(
+                  (entry) => entry.value == _selectedEvent,
+                  orElse: () => MapEntry(_selectedEvent!, _selectedEvent!),
+                )
+                .key;
+        filtered = filtered.where((t) => t.eventId == eventId).toList();
+      }
+    }
     // Apply type filter
     if (_selectedType != null && _selectedType != 'All') {
       filtered =
@@ -85,9 +139,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               .toList();
     }
     // Apply event filter
-    if (_selectedEvent != null && _selectedEvent != 'All') {
-      filtered = filtered.where((t) => t.eventId == _selectedEvent).toList();
-    }
 
     // Apply date range filter
     if (_selectedDateRange != null) {
@@ -252,14 +303,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ],
       ),
     );
-  }
-
-  List<String> _getUniqueEvents() {
-    return _transactions
-        .where((t) => t.eventId.isNotEmpty)
-        .map((t) => t.eventId)
-        .toSet()
-        .toList();
   }
 
   Widget _buildFilterChip({

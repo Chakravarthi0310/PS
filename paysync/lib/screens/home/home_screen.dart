@@ -7,6 +7,7 @@ import 'package:paysync/database/database_helper.dart';
 import 'package:paysync/models/savings_goal_model.dart';
 import 'package:paysync/models/user_model.dart';
 import 'package:paysync/models/transaction_model.dart';
+import 'package:paysync/screens/profile/profile_screen.dart';
 import 'package:paysync/screens/savings/add_savings_goal_screen.dart';
 import 'package:paysync/screens/savings/manage_savings_screen.dart';
 import 'package:paysync/screens/transactions/transaction_details_screen.dart';
@@ -127,52 +128,13 @@ class _HomeScreenState extends State<HomeScreen> {
               // Profile Avatar
               GestureDetector(
                 onTap: () {
-                  showDialog(
-                    context: context,
-                    builder:
-                        (context) => AlertDialog(
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircleAvatar(
-                                radius: 50,
-                                backgroundColor: Colors.grey[200],
-                                backgroundImage:
-                                    _currentUser?.profileImageUrl != null &&
-                                            _currentUser!
-                                                .profileImageUrl
-                                                .isNotEmpty
-                                        ? FileImage(
-                                          File(_currentUser!.profileImageUrl),
-                                        )
-                                        : null,
-                                child:
-                                    _currentUser?.profileImageUrl == null ||
-                                            _currentUser!
-                                                .profileImageUrl
-                                                .isEmpty
-                                        ? Icon(
-                                          Icons.person,
-                                          color: Colors.grey[600],
-                                          size: 50,
-                                        )
-                                        : null,
-                              ),
-                              SizedBox(height: 16),
-                              Text(
-                                _currentUser?.username ?? 'User',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                _currentUser?.email ?? '',
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        ),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) =>
+                              ProfileScreen(currentUser: _currentUser!),
+                    ),
                   );
                 },
                 child: Hero(
@@ -363,12 +325,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_currentUser != null && goal.currency != _currentUser?.currencyName) {
       displayCurrentSavings = CurrencyConverter.convert(
         goal.currentSavings,
-        goal.currency ?? 'USD',
+        goal.currency,
         _currentUser!.currencyName,
       );
       displayTargetAmount = CurrencyConverter.convert(
         goal.targetAmount,
-        goal.currency ?? 'USD',
+        goal.currency,
         _currentUser!.currencyName,
       );
     }
@@ -461,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             if (goal.currency != _currentUser?.currencyName)
                               Text(
-                                '(Original: ${CurrencyFormatter.format(goal.currentSavings, goal.currency ?? 'USD')} / ${CurrencyFormatter.format(goal.targetAmount, goal.currency ?? 'USD')})',
+                                '(Original: ${CurrencyFormatter.format(goal.currentSavings, goal.currency)} / ${CurrencyFormatter.format(goal.targetAmount, goal.currency)})',
                                 style: TextStyle(
                                   color: Colors.grey[400],
                                   fontSize: 10,

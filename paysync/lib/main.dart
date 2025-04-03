@@ -4,7 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:paysync/database/database_helper.dart';
 import 'package:paysync/firebase_options.dart';
 import 'package:paysync/screens/splash/splash_screen.dart';
-import 'package:paysync/services/notification_service.dart';
+// import 'package:paysync/services/notification_service.dart';
 import 'package:paysync/services/sync_service.dart';
 
 void main() async {
@@ -22,7 +22,7 @@ void main() async {
       // Handle denied permission
       print('Location permission denied');
     }
-    await NotificationService.initialize();
+    // await NotificationService.initialize();
 
     // Initialize local database
     final db = await DatabaseHelper().database;

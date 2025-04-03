@@ -6,13 +6,19 @@ import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.firebase.cloud.FirestoreClient;
 import org.springframework.stereotype.Service;
+import com.google.cloud.firestore.FieldPath;
+import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 @Service
+@Slf4j
 public class SyncService {
 
     public void syncToFirestore(Map<String, Object> changes) {
@@ -53,12 +59,41 @@ public class SyncService {
             for (String collection : collections) {
                 Map<String, Object> collectionChanges = new HashMap<>();
                 
-                db.collection(collection)
+                // Get documents modified after last sync
+                QuerySnapshot querySnapshot = db.collection(collection)
                     .whereGreaterThan("lastSynced", lastSync)
                     .get()
-                    .get()
-                    .getDocuments()
-                    .forEach(doc -> collectionChanges.put(doc.getId(), doc.getData()));
+                    .get();
+                
+                querySnapshot.getDocuments().forEach(doc -> {
+                    collectionChanges.put(doc.getId(), doc.getData());
+                    
+                    // If this is a user document, fetch their events
+                    if (collection.equals("users")) {
+                                            String eventIdsStr = (String) doc.getData().get("events");
+                        if (eventIdsStr != null && !eventIdsStr.isEmpty()) {
+                            List<String> eventIds = Arrays.asList(eventIdsStr.split(","));
+                            try {
+                                // Fetch all events in the user's events list
+                                db.collection("events")
+                                    .whereIn(FieldPath.documentId(), eventIds)
+                                    .get()
+                                    .get()
+                                    .getDocuments()
+                                    .forEach(eventDoc -> {
+                                        Map<String, Object> eventData = eventDoc.getData();
+                                        if (!changes.containsKey("events")) {
+                                            changes.put("events", new HashMap<String, Object>());
+                                        }
+                                        ((Map<String, Object>) changes.get("events"))
+                                            .put(eventDoc.getId(), eventData);
+                                    });
+                            } catch (InterruptedException | ExecutionException e) {
+                                log.error("Error fetching user events: ", e);
+                            }
+                        }
+                    }
+                });
                 
                 if (!collectionChanges.isEmpty()) {
                     changes.put(collection, collectionChanges);
@@ -84,19 +119,41 @@ public class SyncService {
                 if (userData != null) {
                     userData.remove("lastSynced"); // Remove sync timestamp
                     allData.put("users", Collections.singletonMap(userId, userData));
-                }
-                
-                // Get user's events
-                CollectionReference eventsRef = db.collection("events");
-                QuerySnapshot eventDocs = eventsRef.whereArrayContains("members", userId).get().get();
-                Map<String, Object> events = new HashMap<>();
-                eventDocs.forEach(doc -> {
-                    Map<String, Object> eventData = doc.getData();
-                    eventData.remove("lastSynced"); // Remove sync timestamp
-                    events.put(doc.getId(), eventData);
-                });
-                if (!events.isEmpty()) {
-                    allData.put("events", events);
+                    
+                    // Get user's events - handle both String and ArrayList formats
+                    Object eventsObj = userData.get("events");
+                    List<String> eventIds = new ArrayList<>();
+                    
+                    if (eventsObj instanceof String) {
+                        // Handle comma-separated string format
+                        String eventIdsStr = (String) eventsObj;
+                        if (eventIdsStr != null && !eventIdsStr.isEmpty()) {
+                            eventIds = Arrays.asList(eventIdsStr.split(","));
+                        }
+                    } else if (eventsObj instanceof List) {
+                        // Handle ArrayList format
+                        eventIds = (List<String>) eventsObj;
+                    }
+                    
+                    if (!eventIds.isEmpty()) {
+                        Map<String, Object> events = new HashMap<>();
+                        
+                        // Fetch all events in the user's events list
+                        db.collection("events")
+                            .whereIn(FieldPath.documentId(), eventIds)
+                            .get()
+                            .get()
+                            .getDocuments()
+                            .forEach(doc -> {
+                                Map<String, Object> eventData = doc.getData();
+                                eventData.remove("lastSynced"); // Remove sync timestamp
+                                events.put(doc.getId(), eventData);
+                            });
+                            
+                        if (!events.isEmpty()) {
+                            allData.put("events", events);
+                        }
+                    }
                 }
 
                 // Get user's transactions

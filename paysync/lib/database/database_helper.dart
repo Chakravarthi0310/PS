@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:paysync/models/savings_goal_model.dart';
 import 'package:paysync/services/sync_service.dart';
 import 'package:sqflite/sqflite.dart';
@@ -336,6 +337,8 @@ class DatabaseHelper {
       await db.update(
         'users',
         {
+          'username': user.username,
+          'profileImageUrl': user.profileImageUrl,
           'onlineAmount': user.onlineAmount,
           'offlineAmount': user.offlineAmount,
           'events': user.events.join(','),
@@ -814,6 +817,132 @@ class DatabaseHelper {
           'id': documentId,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
+    }
+  }
+
+  Future<bool> inviteUserToEvent(String eventId, String userEmail) async {
+    try {
+      firestore.FirebaseFirestore _firestore =
+          firestore.FirebaseFirestore.instance;
+      final db = await database;
+
+      final userQuery =
+          await _firestore
+              .collection('users')
+              .where('email', isEqualTo: userEmail)
+              .get();
+
+      if (userQuery.docs.isEmpty) return false;
+
+      final userId = userQuery.docs.first.id;
+      final userDoc = userQuery.docs.first;
+
+      // Check if user is already a member in Firestore
+      final eventDoc = await _firestore.collection('events').doc(eventId).get();
+      String membersString = eventDoc.data()?['members'] ?? '';
+      List<String> members =
+          membersString.isEmpty ? [] : membersString.split(',');
+
+      if (members.contains(userId)) {
+        return false;
+      }
+
+      // Add user to event members
+      members.add(userId);
+      await _firestore.collection('events').doc(eventId).update({
+        'members':
+            members.isEmpty
+                ? ''
+                : members.join(','), // Ensure empty string when no members
+      });
+
+      // Add event to user's events list
+      String currentEvents = userDoc.data()?['events'] ?? '';
+      List<String> eventsList =
+          currentEvents.isEmpty ? [] : currentEvents.split(',');
+
+      if (!eventsList.contains(eventId)) {
+        eventsList.add(eventId);
+        await _firestore.collection('users').doc(userId).update({
+          'events':
+              eventsList.isEmpty
+                  ? ''
+                  : eventsList.join(','), // Ensure empty string when no events
+        });
+      }
+
+      // Update local database
+      await updateEventMembers(eventId, members);
+
+      return true;
+    } catch (e) {
+      print('Error inviting user: $e');
+      return false;
+    }
+  }
+
+  Future<void> updateEventMembers(String eventId, List<String> members) async {
+    final db = await database;
+    await db.update(
+      'events',
+      {
+        'members': members.join(','),
+        'updatedAt': DateTime.now().toIso8601String(),
+      },
+      where: 'eventId = ?',
+      whereArgs: [eventId],
+    );
+    await markForSync('events', eventId, 'update');
+  }
+
+  Future<bool> removeMemberFromEvent(String eventId, String userId) async {
+    try {
+      firestore.FirebaseFirestore _firestore =
+          firestore.FirebaseFirestore.instance;
+
+      // Get current event data
+      final eventDoc = await _firestore.collection('events').doc(eventId).get();
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+
+      // Handle members list in event
+      final membersData = eventDoc.data()?['members'];
+      String membersString = '';
+      if (membersData is String) {
+        membersString = membersData;
+      } else if (membersData is List) {
+        membersString = membersData.join(',');
+      }
+      List<String> members =
+          membersString.isEmpty ? [] : membersString.split(',');
+      members.remove(userId);
+
+      // Handle events list in user
+      final eventsData = userDoc.data()?['events'];
+      String eventsString = '';
+      if (eventsData is String) {
+        eventsString = eventsData;
+      } else if (eventsData is List) {
+        eventsString = eventsData.join(',');
+      }
+      List<String> events = eventsString.isEmpty ? [] : eventsString.split(',');
+      events.remove(eventId);
+
+      // Update both documents
+      await _firestore.collection('events').doc(eventId).update({
+        'members': members.isEmpty ? '' : members.join(','),
+      });
+
+      await _firestore.collection('users').doc(userId).update({
+        'events': events.isEmpty ? '' : events.join(','),
+      });
+
+      // Update local database
+      await updateEventMembers(eventId, members);
+
+      return true;
+    } catch (e) {
+      print('Error removing member from event: $e');
+      return false;
     }
   }
 }

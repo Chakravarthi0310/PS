@@ -2,9 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
   final String userId;
-  final String username;
+  late final String username;
   final String? email;
-  final String profileImageUrl;
+  late final String profileImageUrl;
   final String defaultCurrency;
   double onlineAmount;
   double offlineAmount;
@@ -13,7 +13,7 @@ class UserModel {
   final List<String> events;
   final String defaultEventId;
   final DateTime createdAt;
-  final DateTime updatedAt;
+  late final DateTime updatedAt;
   final Map<String, bool> preferences;
   final String currencySymbol;
   final String currencyName;

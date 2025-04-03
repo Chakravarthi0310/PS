@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:paysync/database/database_helper.dart';
 import 'package:paysync/models/user_model.dart';
+import 'package:paysync/screens/auth/login_screen.dart';
+import 'package:paysync/screens/profile/profile_screen.dart';
 import 'package:paysync/utils/currency_converter.dart';
 import 'package:paysync/widgets/common/futuristic_app_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -124,8 +126,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: Text(userData?.email ?? ''),
                   trailing: IconButton(
                     icon: Icon(Icons.edit),
-                    onPressed: () {
-                      // TODO: Implement profile editing
+                    onPressed: () async {
+                      final updatedUser = await Navigator.push<UserModel>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProfileScreen(currentUser: userData!),
+                        ),
+                      );
+                      
+                      if (updatedUser != null) {
+                        setState(() {
+                          userFuture = Future.value(updatedUser);
+                        });
+                      }
                     },
                   ),
                 ),
@@ -245,7 +258,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Text('Logout'),
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
-                  Navigator.of(context).pushReplacementNamed('/login');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                  );
                 },
               ),
             ],

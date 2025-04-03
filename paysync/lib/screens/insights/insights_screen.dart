@@ -95,10 +95,10 @@ class _InsightsScreenState extends State<InsightsScreen> {
                                   value: null,
                                   child: Text('All Events'),
                                 ),
-                                DropdownMenuItem(
-                                  value: 'default',
-                                  child: Text('Default Event'),
-                                ),
+                                // DropdownMenuItem(
+                                //   value: '',
+                                //   child: Text('Default Event'),
+                                // ),
                                 ..._events.map(
                                   (event) => DropdownMenuItem(
                                     value: event.eventId,

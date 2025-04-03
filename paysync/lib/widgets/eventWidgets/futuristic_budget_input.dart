@@ -49,16 +49,18 @@ class _FuturisticBudgetInputState extends State<FuturisticBudgetInput> {
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: _isFocused
-              ? Theme.of(context).primaryColor
-              : Colors.grey.withOpacity(0.3),
+          color:
+              _isFocused
+                  ? Theme.of(context).primaryColor
+                  : Colors.grey.withOpacity(0.3),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: _isFocused
-                ? Theme.of(context).primaryColor.withOpacity(0.2)
-                : Colors.transparent,
+            color:
+                _isFocused
+                    ? Theme.of(context).primaryColor.withOpacity(0.2)
+                    : Colors.transparent,
             blurRadius: 15,
             spreadRadius: 1,
           ),
@@ -68,31 +70,32 @@ class _FuturisticBudgetInputState extends State<FuturisticBudgetInput> {
         controller: widget.controller,
         focusNode: _focusNode,
         keyboardType: TextInputType.number,
-        style: TextStyle(
-          fontSize: 16,
-          color: Colors.grey[800],
-        ),
+        style: TextStyle(fontSize: 16, color: Colors.grey[800]),
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
         ],
+        validator:
+            (value) =>
+                value?.isEmpty ?? true ? 'Please enter event budget' : null,
         decoration: InputDecoration(
-          labelText: 'Budget (Optional)',
+          labelText: 'Budget ',
           labelStyle: TextStyle(
-            color: _isFocused
-                ? Theme.of(context).primaryColor
-                : Colors.grey.withOpacity(0.8),
+            color:
+                _isFocused
+                    ? Theme.of(context).primaryColor
+                    : Colors.grey.withOpacity(0.8),
           ),
           prefixIcon: Icon(
             Icons.account_balance_wallet,
-            color: _isFocused
-                ? Theme.of(context).primaryColor
-                : Colors.grey.withOpacity(0.8),
+            color:
+                _isFocused
+                    ? Theme.of(context).primaryColor
+                    : Colors.grey.withOpacity(0.8),
           ),
           prefixText: widget.currency,
           prefixStyle: TextStyle(
-            color: _isFocused
-                ? Theme.of(context).primaryColor
-                : Colors.grey[800],
+            color:
+                _isFocused ? Theme.of(context).primaryColor : Colors.grey[800],
             fontSize: 16,
           ),
           border: OutlineInputBorder(
