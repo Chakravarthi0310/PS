@@ -33,11 +33,11 @@ class EventDetailsScreen extends StatelessWidget {
                 _buildEventSummaryCard(),
                 // _buildBudgetSection(),
                 _buildBudgetProgress(context),
+
                 MemberManagementWidget(
                   event: event,
                   currentUserId: currentUser.userId,
                 ),
-
                 _buildTransactionsSection(context),
               ],
             ),

@@ -440,12 +440,12 @@ class DatabaseHelper {
   //       )
   //     ''');
   // }
-
   Future<void> insertTransaction(TransactionModel transaction) async {
     try {
       final db = await database;
+      final _firestore = firestore.FirebaseFirestore.instance;
 
-      // Insert the transaction
+      // Insert the transaction in local database
       await db.insert('transactions', {
         'transactionId': transaction.transactionId,
         'userId': transaction.userId,
@@ -463,23 +463,26 @@ class DatabaseHelper {
         'recurringType': transaction.recurringType,
         'createdAt': transaction.createdAt.toIso8601String(),
         'updatedAt': transaction.updatedAt.toIso8601String(),
-        'onlineBalanceAfter': transaction.onlineBalanceAfter, // Add this line
-        'offlineBalanceAfter': transaction.offlineBalanceAfter, // Add this line
+        'onlineBalanceAfter': transaction.onlineBalanceAfter,
+        'offlineBalanceAfter': transaction.offlineBalanceAfter,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
-      // Get the associated event
+      // Mark for sync and trigger sync service
       await markForSync('transactions', transaction.transactionId, 'insert');
       print('Transaction marked for sync: ${transaction.transactionId}');
       SyncService.syncIfNeeded();
-      print("SYnc is worked check once");
-      final event = await getEvent(transaction.eventId);
-      if (event != null) {
-        // Add transaction to event's transaction list
-        List<String> transactions = event.transactions;
-        if (!transactions.contains(transaction.transactionId)) {
-          transactions.add(transaction.transactionId);
 
-          // Update event amounts based on transaction
+      // Get the event from both local and Firestore
+      final event = await getEvent(transaction.eventId);
+      final eventDoc =
+          await _firestore.collection('events').doc(transaction.eventId).get();
+
+      if (event != null && eventDoc.exists) {
+        // Handle local database update
+        List<String> localTransactions = event.transactions;
+        if (!localTransactions.contains(transaction.transactionId)) {
+          localTransactions.add(transaction.transactionId);
+
           double newOnlineAmount = event.onlineAmountOfEvent;
           double newOfflineAmount = event.offlineAmountOfEvent;
 
@@ -491,11 +494,11 @@ class DatabaseHelper {
                 transaction.isCredit ? transaction.amount : -transaction.amount;
           }
 
-          // Update the event in database
+          // Update local event
           await db.update(
             'events',
             {
-              'transactions': transactions.join(','),
+              'transactions': localTransactions.join(','),
               'onlineAmountOfEvent': newOnlineAmount,
               'offlineAmountOfEvent': newOfflineAmount,
               'updatedAt': DateTime.now().toIso8601String(),
@@ -503,6 +506,25 @@ class DatabaseHelper {
             where: 'eventId = ?',
             whereArgs: [transaction.eventId],
           );
+
+          // Update Firestore event
+          final eventData = eventDoc.data()!;
+          List<String> firestoreTransactions = List<String>.from(
+            eventData['transactions'] ?? [],
+          );
+          if (!firestoreTransactions.contains(transaction.transactionId)) {
+            firestoreTransactions.add(transaction.transactionId);
+
+            await _firestore
+                .collection('events')
+                .doc(transaction.eventId)
+                .update({
+                  'transactions': firestoreTransactions,
+                  'onlineAmountOfEvent': newOnlineAmount,
+                  'offlineAmountOfEvent': newOfflineAmount,
+                  'updatedAt': DateTime.now().toIso8601String(),
+                });
+          }
         }
       }
 
@@ -651,40 +673,108 @@ class DatabaseHelper {
   Future<List<EventModel>> getUserEvents(String userId) async {
     try {
       final db = await database;
-      final List<Map<String, dynamic>> results = await db.query(
+      List<EventModel> allEvents = [];
+
+      // Get local events
+      final List<Map<String, dynamic>> localResults = await db.query(
         'events',
         where: 'createdBy = ? OR members LIKE ?',
         whereArgs: [userId, '%$userId%'],
         orderBy: 'createdAt DESC',
       );
 
-      return results.map((result) {
-        List<String> transactions = [];
-        if (result['transactions'] != null &&
-            result['transactions'].toString().isNotEmpty) {
-          transactions = result['transactions'].toString().split(',');
-        }
+      // Convert local results to EventModel list
+      allEvents.addAll(
+        localResults.map((result) {
+          List<String> transactions = [];
+          if (result['transactions'] != null &&
+              result['transactions'].toString().isNotEmpty) {
+            transactions = result['transactions'].toString().split(',');
+          }
 
-        List<String> members = [];
-        if (result['members'] != null &&
-            result['members'].toString().isNotEmpty) {
-          members = result['members'].toString().split(',');
-        }
+          List<String> members = [];
+          if (result['members'] != null &&
+              result['members'].toString().isNotEmpty) {
+            members = result['members'].toString().split(',');
+          }
 
-        return EventModel(
-          eventId: result['eventId'],
-          nameOfEvent: result['nameOfEvent'],
-          createdBy: result['createdBy'],
-          transactions: transactions,
-          onlineAmountOfEvent: result['onlineAmountOfEvent'].toDouble(),
-          offlineAmountOfEvent: result['offlineAmountOfEvent'].toDouble(),
-          members: members,
-          currency: result['currency'],
-          budget: result['budget']?.toDouble(),
-          createdAt: DateTime.parse(result['createdAt']),
-          updatedAt: DateTime.parse(result['updatedAt']),
-        );
-      }).toList();
+          return EventModel(
+            eventId: result['eventId'],
+            nameOfEvent: result['nameOfEvent'],
+            createdBy: result['createdBy'],
+            transactions: transactions,
+            onlineAmountOfEvent: result['onlineAmountOfEvent'].toDouble(),
+            offlineAmountOfEvent: result['offlineAmountOfEvent'].toDouble(),
+            members: members,
+            currency: result['currency'],
+            budget: result['budget']?.toDouble(),
+            createdAt: DateTime.parse(result['createdAt']),
+            updatedAt: DateTime.parse(result['updatedAt']),
+          );
+        }),
+      );
+
+      // Try to fetch from Firestore if online
+      try {
+        final _firestore = firestore.FirebaseFirestore.instance;
+
+        // Get events where user is creator
+        final createdEventsQuery =
+            await _firestore
+                .collection('events')
+                .where('createdBy', isEqualTo: userId)
+                .get();
+
+        // Get events where user is a member
+        final memberEventsQuery =
+            await _firestore
+                .collection('events')
+                .where('members', arrayContains: userId)
+                .get();
+
+        // Combine both queries and convert to EventModel
+        final firestoreEvents = [
+          ...createdEventsQuery.docs,
+          ...memberEventsQuery.docs,
+        ];
+
+        for (var doc in firestoreEvents) {
+          final data = doc.data();
+          final eventId = doc.id;
+
+          // Check if event already exists in local list
+          if (!allEvents.any((e) => e.eventId == eventId)) {
+            final event = EventModel(
+              eventId: eventId,
+              nameOfEvent: data['nameOfEvent'] ?? '',
+              createdBy: data['createdBy'] ?? '',
+              transactions: List<String>.from(data['transactions'] ?? []),
+              onlineAmountOfEvent:
+                  (data['onlineAmountOfEvent'] ?? 0.0).toDouble(),
+              offlineAmountOfEvent:
+                  (data['offlineAmountOfEvent'] ?? 0.0).toDouble(),
+              members: List<String>.from(data['members'] ?? []),
+              currency: data['currency'] ?? 'USD',
+              budget: (data['budget'] ?? 0.0).toDouble(),
+              createdAt: (data['createdAt'] as firestore.Timestamp).toDate(),
+              updatedAt: (data['updatedAt'] as firestore.Timestamp).toDate(),
+            );
+
+            allEvents.add(event);
+
+            // Insert or update in local database
+            await insertEvent(event);
+          }
+        }
+      } catch (e) {
+        print('Error fetching from Firestore: $e');
+        // Continue with local results if Firestore fails
+      }
+
+      // Sort all events by creation date
+      allEvents.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      return allEvents;
     } catch (e) {
       print('Error getting user events: $e');
       return [];

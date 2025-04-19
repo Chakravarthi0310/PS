@@ -179,6 +179,7 @@ class _EventsScreenState extends State<EventsScreen> {
                                 final userModel = await DatabaseHelper()
                                     .getUser(currentUser.uid);
                                 if (userModel != null) {
+                                  print(event.transactions);
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(

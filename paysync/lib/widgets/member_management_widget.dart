@@ -18,51 +18,53 @@ class MemberManagementWidget extends StatelessWidget {
     final membersData = <Map<String, dynamic>>[];
 
     try {
-      // First, get the creator's data
+      // Get creator's data first
       final creatorDoc =
           await FirebaseFirestore.instance
               .collection('users')
               .doc(event.createdBy)
               .get();
-      print(creatorDoc);
-      if (creatorDoc.exists) {
+
+      if (creatorDoc.exists && creatorDoc.data() != null) {
+        final creatorData = creatorDoc.data()!;
         membersData.add({
           'id': creatorDoc.id,
-          'name': creatorDoc.data()?['username'] ?? 'Unknown',
-          'email': creatorDoc.data()?['email'] ?? 'No email',
+          'name': creatorData['username'] ?? 'Unknown',
+          'email': creatorData['email'] ?? 'No email',
           'isCreator': true,
         });
       }
 
-      print("members: ${event.members}");
+      // Get other members' data
+      if (event.members.isNotEmpty) {
+        final otherMembers =
+            event.members
+                .where(
+                  (memberId) =>
+                      memberId.isNotEmpty && memberId != event.createdBy,
+                )
+                .toList();
 
-      // Then get other members' data
-      List<String> otherMembers =
-          event.members
-              .where(
-                (memberId) =>
-                    memberId != event.createdBy && memberId.isNotEmpty,
-              )
-              .toList();
-      print("other members: ${otherMembers}");
-      if (otherMembers.isNotEmpty) {
-        final userDocs =
-            await FirebaseFirestore.instance
-                .collection('users')
-                .where(FieldPath.documentId, whereIn: otherMembers)
-                .get();
+        if (otherMembers.isNotEmpty) {
+          final userDocs =
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .where(FieldPath.documentId, whereIn: otherMembers)
+                  .get();
 
-        for (var doc in userDocs.docs) {
-          membersData.add({
-            'id': doc.id,
-            'name': doc.data()['username'] ?? 'Unknown',
-            'email': doc.data()['email'] ?? 'No email',
-            'isCreator': false,
-          });
+          for (var doc in userDocs.docs) {
+            if (doc.exists && doc.data().isNotEmpty) {
+              membersData.add({
+                'id': doc.id,
+                'name': doc.data()['username'] ?? 'Unknown',
+                'email': doc.data()['email'] ?? 'No email',
+                'isCreator': false,
+              });
+            }
+          }
         }
       }
 
-      print("Members data: $membersData"); // Debug print
       return membersData;
     } catch (e) {
       print('Error fetching members: $e');
@@ -71,21 +73,56 @@ class MemberManagementWidget extends StatelessWidget {
   }
 
   Future<void> _removeMember(BuildContext context, String memberId) async {
-    if (event.createdBy == currentUserId) {
-      try {
-        // Update Firestore
-        await DatabaseHelper().removeMemberFromEvent(event.eventId, memberId);
-        if (context.mounted) {
+    try {
+      // Show confirmation dialog
+      final bool confirm =
+          await showDialog(
+            context: context,
+            builder:
+                (context) => AlertDialog(
+                  title: const Text('Remove Member'),
+                  content: const Text(
+                    'Are you sure you want to remove this member?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Remove'),
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    ),
+                  ],
+                ),
+          ) ??
+          false;
+
+      if (!confirm) return;
+
+      // Remove member using DatabaseHelper
+      final success = await DatabaseHelper().removeMemberFromEvent(
+        event.eventId,
+        memberId,
+      );
+
+      if (context.mounted) {
+        if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Member removed successfully')),
           );
-        }
-      } catch (e) {
-        if (context.mounted) {
+        } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to remove member: $e')),
+            const SnackBar(content: Text('Failed to remove member')),
           );
         }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -108,8 +145,6 @@ class MemberManagementWidget extends StatelessWidget {
                 ),
                 if (event.createdBy == currentUserId)
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Add Member'),
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -122,38 +157,53 @@ class MemberManagementWidget extends StatelessWidget {
                         ),
                       );
                     },
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Add Member'),
                     style: ElevatedButton.styleFrom(
                       foregroundColor: Colors.white,
                       backgroundColor: Theme.of(context).primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             FutureBuilder<List<Map<String, dynamic>>>(
               future: _getMembersData(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Text('No members');
+
+                if (snapshot.hasError) {
+                  return Text('Error: ${snapshot.error}');
                 }
+
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Text('No members found');
+                }
+
                 return ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: snapshot.data!.length,
                   itemBuilder: (context, index) {
                     final member = snapshot.data![index];
+                    final String memberName = member['name'] ?? 'Unknown';
+                    final String initial =
+                        memberName.isNotEmpty
+                            ? memberName[0].toUpperCase()
+                            : '?';
+
                     return ListTile(
                       leading: CircleAvatar(
-                        child: Text(member['name'][0].toUpperCase()),
+                        backgroundColor: Theme.of(context).primaryColor,
+                        child: Text(
+                          initial,
+                          style: const TextStyle(color: Colors.white),
+                        ),
                       ),
-                      title: Text(member['name']),
-                      subtitle: Text(member['email']),
+                      title: Text(memberName),
+                      subtitle: Text(member['email'] ?? 'No email'),
                       trailing:
                           event.createdBy == currentUserId &&
                                   !member['isCreator']
