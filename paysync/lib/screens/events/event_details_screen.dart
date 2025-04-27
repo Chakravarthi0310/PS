@@ -10,6 +10,7 @@ import 'package:paysync/database/database_helper.dart';
 import 'package:paysync/models/transaction_model.dart';
 import 'package:paysync/widgets/member_management_widget.dart';
 import 'package:paysync/screens/events/event_transactions_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 
 class EventDetailsScreen extends StatelessWidget {
   final EventModel event;
@@ -618,15 +619,39 @@ class EventDetailsScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   TextButton(
-                    onPressed: () {
+                    onPressed: () async {
+                      // Get member details from database
+                      final db = DatabaseHelper();
+                      final members = <String, UserModel>{};
+                      
+                      // Add current user to members list
+                      members[currentUser.userId] = currentUser;
+                      
+                      // Add event creator to members list
+                      final creator = await db.getUser(event.createdBy);
+                      if (creator != null) {
+                        members[event.createdBy] = creator;
+                      }
+                      
+                      // Add other event members
+                      for (String memberId in event.members) {
+                        if (memberId != currentUser.userId && memberId != event.createdBy) {
+                          final member = await db.getUser(memberId);
+                          if (member != null) {
+                            members[memberId] = member;
+                          }
+                        }
+                      }
+                      print("members are ${members}");
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder:
-                              (context) => EventTransactionsScreen(
-                                event: event,
-                                currentUser: currentUser,
-                              ),
+                          builder: (context) => EventTransactionsScreen(
+                            event: event,
+                            currentUser: currentUser,
+                            members: members,
+                          ),
                         ),
                       );
                     },
@@ -638,10 +663,7 @@ class EventDetailsScreen extends StatelessWidget {
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: transactions.length.clamp(
-                  0,
-                  5,
-                ), // Show only recent 5
+                itemCount: transactions.length.clamp(0, 5), // Show only recent 5
                 itemBuilder: (context, index) {
                   final transaction = transactions[index];
                   return TransactionCard(
@@ -658,18 +680,91 @@ class EventDetailsScreen extends StatelessWidget {
   }
 
   Future<List<TransactionModel>> _getEventTransactions() async {
+    print('🔄 Fetching transactions for event: ${event.eventId}');
     final db = DatabaseHelper();
+    final _firestore = firestore.FirebaseFirestore.instance;
     List<TransactionModel> transactions = [];
 
-    for (String transactionId in event.transactions) {
-      final transaction = await db.getTransaction(transactionId);
-      if (transaction != null) {
-        transactions.add(transaction);
+    // First, try to get transactions from Firestore
+    try {
+      print('🌐 Fetching from Firestore...');
+      final eventDoc = await _firestore.collection('events').doc(event.eventId).get();
+      if (eventDoc.exists) {
+        final eventData = eventDoc.data()!;
+        List<String> transactionIds = [];
+        
+        // Handle both string and list formats for transactions
+        if (eventData['transactions'] != null) {
+          if (eventData['transactions'] is String) {
+            transactionIds = eventData['transactions'].toString().split(',').where((e) => e.isNotEmpty).toList();
+          } else if (eventData['transactions'] is List) {
+            transactionIds = List<String>.from(eventData['transactions']);
+          }
+        }
+
+        print('📋 Found ${transactionIds.length} transaction IDs in Firestore');
+        
+        // Fetch all transactions in parallel
+        final transactionFutures = transactionIds.map((id) => _firestore.collection('transactions').doc(id).get());
+        final transactionDocs = await Future.wait(transactionFutures);
+
+        for (var doc in transactionDocs) {
+          if (doc.exists) {
+            final data = doc.data()!;
+            print('✅ Found transaction in Firestore: ${doc.id}');
+            
+            final transaction = TransactionModel(
+              transactionId: doc.id,
+              userId: data['userId'],
+              eventId: data['eventId'],
+              isOnline: data['isOnline'] == 1 || data['isOnline'] == true,
+              isCredit: data['isCredit'] == 1 || data['isCredit'] == true,
+              amount: data['amount'].toDouble(),
+              currency: data['currency'],
+              paymentMethod: data['paymentMethod'],
+              location: data['location'],
+              dateTime: data['dateTime'] is firestore.Timestamp 
+                ? (data['dateTime'] as firestore.Timestamp).toDate()
+                : DateTime.parse(data['dateTime']),
+              note: data['note'],
+              imageUrl: data['imageUrl'],
+              recurring: data['recurring'] == 1 || data['recurring'] == true,
+              recurringType: data['recurringType'],
+              createdAt: data['createdAt'] is firestore.Timestamp 
+                ? (data['createdAt'] as firestore.Timestamp).toDate()
+                : DateTime.parse(data['createdAt']),
+              updatedAt: data['updatedAt'] is firestore.Timestamp 
+                ? (data['updatedAt'] as firestore.Timestamp).toDate()
+                : DateTime.parse(data['updatedAt']),
+              onlineBalanceAfter: data['onlineBalanceAfter']?.toDouble() ?? 0.0,
+              offlineBalanceAfter: data['offlineBalanceAfter']?.toDouble() ?? 0.0,
+            );
+
+            // Store in local database for offline access
+            await db.insertTransaction(transaction);
+            transactions.add(transaction);
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Error fetching from Firestore: $e');
+    }
+
+    // If no transactions found in Firestore, try local database
+    if (transactions.isEmpty) {
+      print('📱 Falling back to local database...');
+      for (String transactionId in event.transactions) {
+        final transaction = await db.getTransaction(transactionId);
+        if (transaction != null) {
+          print('✅ Found transaction in local DB: $transactionId');
+          transactions.add(transaction);
+        }
       }
     }
 
     // Sort by date, most recent first
     transactions.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+    print('📊 Total transactions found: ${transactions.length}');
     return transactions;
   }
 }

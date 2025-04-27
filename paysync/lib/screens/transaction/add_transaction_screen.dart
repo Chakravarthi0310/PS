@@ -21,6 +21,7 @@ import 'package:paysync/widgets/addTransactionWidgets/payment_mode_segment.dart'
 import 'package:paysync/widgets/common/futuristic_app_bar.dart';
 import 'package:uuid/uuid.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:paysync/utils/currency_formatter.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   final EventModel? event;
@@ -143,16 +144,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       if (currentUser != null) {
         final userDetails = await DatabaseHelper().getUser(currentUser.uid);
         if (userDetails != null) {
-          List<EventModel> userEvents = [];
-
-          List<String> eventIds =
-              userDetails.events.where((e) => e.isNotEmpty).toList();
-
-          for (String eventId in eventIds) {
-            final event = await DatabaseHelper().getEvent(eventId);
-            if (event != null) {
-              userEvents.add(event);
-            }
+          // Use getUserEvents to fetch all events at once
+          List<EventModel> userEvents = await DatabaseHelper().getUserEvents(currentUser.uid);
+          
+          print('📊 Loaded ${userEvents.length} events for user');
+          for (var event in userEvents) {
+            print('📋 Event: ${event.nameOfEvent} (${event.eventId})');
           }
 
           setState(() {
@@ -164,7 +161,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         }
       }
     } catch (e) {
-      print('Error loading events: $e');
+      print('❌ Error loading events: $e');
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Failed to load events')));
     }
@@ -457,15 +454,57 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           );
         }
 
+        // Check if user has sufficient balance for expenses
+        if (!_isCredit) {
+          if (_isOnline) {
+            if (userDetails.onlineAmount < amountInUserCurrency) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Insufficient online balance. Available: ${CurrencyFormatter.format(userDetails.onlineAmount, userDetails.currencyName)}',
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+          } else {
+            if (userDetails.offlineAmount < amount) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Insufficient offline balance. Available: ${CurrencyFormatter.format(userDetails.offlineAmount, userDetails.currencyName)}',
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+          }
+        }
+
+        // Ensure eventId is not empty
+        String eventId = _selectedEvent;
+        if (eventId.isEmpty || eventId == 'default') {
+          eventId = 'default';
+        }
+
+        // For savings transactions, use a special event ID
+        if (_selectedPaymentMethod == 'Savings Transfer') {
+          eventId = 'savings';
+        }
+
         // Create transaction
         final transaction = TransactionModel(
           transactionId: Uuid().v4(),
           userId: currentUser.uid,
-          eventId: _selectedEvent,
+          eventId: eventId,
           isOnline: _isOnline,
           isCredit: _isCredit,
           amount: amount,
-          currency: _currentCurrency, // TODO: Get from user preferences
+          currency: _currentCurrency,
           paymentMethod: _selectedPaymentMethod,
           location: _locationController.text,
           dateTime: _selectedDate,
@@ -504,37 +543,75 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         await DatabaseHelper().updateUser(userDetails);
 
         // Save transaction
-        await DatabaseHelper().insertTransaction(transaction);
+        try {
+          await DatabaseHelper().insertTransaction(transaction);
+          
+          // Schedule next transaction if recurring
+          if (_isRecurring) {
+            await RecurringTransactionService.scheduleNextTransaction(
+              transaction,
+            );
+          }
 
-        // Schedule next transaction if recurring
-        if (_isRecurring) {
-          await RecurringTransactionService.scheduleNextTransaction(
-            transaction,
+          // Show success message based on transaction type
+          String successMessage;
+          if (_selectedPaymentMethod == 'Savings Transfer') {
+            successMessage = 'Amount successfully added to savings!';
+          } else if (_isRecurring) {
+            successMessage = 'Transaction saved and next recurring transaction scheduled';
+          } else {
+            successMessage = 'Transaction saved successfully';
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(successMessage),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                margin: EdgeInsets.all(10),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+
+          // Wait for snackbar to show before popping
+          await Future.delayed(Duration(milliseconds: 500));
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
+        } catch (e) {
+          print('Error saving transaction to Firestore: $e');
+          // Show a more user-friendly error message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Transaction saved locally but sync failed. Will retry later.'),
+                backgroundColor: Colors.orange,
+                behavior: SnackBarBehavior.floating,
+                margin: EdgeInsets.all(10),
+              ),
+            );
+            Navigator.pop(context, true);
+          }
+        }
+      } catch (e) {
+        print('Error in transaction process: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to process transaction'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.all(10),
+            ),
           );
         }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isRecurring
-                  ? 'Transaction saved and next recurring transaction scheduled'
-                  : 'Transaction saved successfully',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        Navigator.pop(context, true);
-      } catch (e) {
-        print('Error saving transaction: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save transaction'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
-      setState(() => _isLoading = false);
     }
   }
 }

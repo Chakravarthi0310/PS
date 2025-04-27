@@ -105,7 +105,7 @@ class _ManageSavingsScreenState extends State<ManageSavingsScreen> {
       final transaction = TransactionModel(
         transactionId: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: widget.currentUser.userId,
-        eventId: widget.currentUser.defaultEventId,
+        eventId: 'savings',
         isOnline: _isOnline,
         isCredit:
             !_isAdding, // credit when removing from savings (adding to balance)
@@ -146,13 +146,31 @@ class _ManageSavingsScreenState extends State<ManageSavingsScreen> {
             margin: EdgeInsets.all(10),
           ),
         );
+      } else {
+        // Show success message for regular savings update
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isAdding
+                  ? 'Successfully added ${CurrencyFormatter.format(amount, _selectedCurrency)} to savings'
+                  : 'Successfully removed ${CurrencyFormatter.format(amount, _selectedCurrency)} from savings',
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.all(10),
+          ),
+        );
       }
 
+      // Wait for snackbar to show before popping
+      await Future.delayed(Duration(milliseconds: 500));
       Navigator.pop(context, true);
     } catch (e) {
+      print('Error in savings update: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to update savings'),
+          content: Text('Failed to update savings: ${e.toString()}'),
           behavior: SnackBarBehavior.floating,
           margin: EdgeInsets.all(10),
         ),

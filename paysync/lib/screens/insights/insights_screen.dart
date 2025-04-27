@@ -266,7 +266,51 @@ class _InsightsScreenState extends State<InsightsScreen> {
               child: BarChart(
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
-                  maxY: 100,
+                  maxY: _getMaxActivityValue(),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final members = _getTopMembers();
+                          if (value.toInt() >= members.length) return Text('');
+                          return Padding(
+                            padding: EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              members[value.toInt()]['name'] as String,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toInt().toString(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey[600],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  gridData: FlGridData(show: false),
                   barGroups: _getMemberActivityData(),
                 ),
               ),
@@ -278,9 +322,116 @@ class _InsightsScreenState extends State<InsightsScreen> {
   }
 
   List<BarChartGroupData> _getMemberActivityData() {
-    // Implementation for member activity chart data
-    // This would analyze member participation across events
-    return [];
+    // Get all unique member IDs from events
+    final Set<String> allMemberIds = _events.fold<Set<String>>(
+      {},
+      (prev, event) => prev..addAll(event.members),
+    );
+
+    // Filter transactions based on selected period and event
+    final filteredTransactions = _transactions.where((transaction) {
+      if (_selectedEventId != null && transaction.eventId != _selectedEventId) {
+        return false;
+      }
+      return _isInSelectedPeriod(transaction.dateTime);
+    }).toList();
+
+    // Calculate activity for each member
+    final memberActivity = <String, int>{};
+    for (final memberId in allMemberIds) {
+      final memberTransactions = filteredTransactions.where(
+        (t) => t.userId == memberId,
+      );
+      memberActivity[memberId] = memberTransactions.length;
+    }
+
+    // Sort members by activity
+    final sortedMembers = memberActivity.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    // Get top 5 most active members
+    final topMembers = sortedMembers.take(5).toList();
+
+    // Create bar chart data
+    return List.generate(
+      topMembers.length,
+      (index) {
+        final member = topMembers[index];
+        return BarChartGroupData(
+          x: index,
+          barRods: [
+            BarChartRodData(
+              toY: member.value.toDouble(),
+              color: Theme.of(context).primaryColor,
+              width: 20,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  bool _isInSelectedPeriod(DateTime date) {
+    final now = DateTime.now();
+    switch (_selectedPeriod) {
+      case 'Week':
+        return date.isAfter(now.subtract(Duration(days: 7)));
+      case 'Month':
+        return date.isAfter(now.subtract(Duration(days: 30)));
+      case 'Year':
+        return date.isAfter(now.subtract(Duration(days: 365)));
+      default:
+        return true;
+    }
+  }
+
+  double _getMaxActivityValue() {
+    final activityData = _getMemberActivityData();
+    if (activityData.isEmpty) return 10;
+    return activityData
+        .map((group) => group.barRods.first.toY)
+        .reduce((a, b) => a > b ? a : b)
+        .ceilToDouble();
+  }
+
+  List<Map<String, dynamic>> _getTopMembers() {
+    final Set<String> allMemberIds = _events.fold<Set<String>>(
+      {},
+      (prev, event) => prev..addAll(event.members),
+    );
+
+    final filteredTransactions = _transactions.where((transaction) {
+      if (_selectedEventId != null && transaction.eventId != _selectedEventId) {
+        return false;
+      }
+      return _isInSelectedPeriod(transaction.dateTime);
+    }).toList();
+
+    final memberActivity = <String, int>{};
+    for (final memberId in allMemberIds) {
+      final memberTransactions = filteredTransactions.where(
+        (t) => t.userId == memberId,
+      );
+      memberActivity[memberId] = memberTransactions.length;
+    }
+
+    final sortedMembers = memberActivity.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return sortedMembers.take(5).map((entry) {
+      return {
+        'id': entry.key,
+        'name': _getMemberName(entry.key),
+        'count': entry.value,
+      };
+    }).toList();
+  }
+
+  String _getMemberName(String memberId) {
+    // This is a placeholder - you should implement proper member name lookup
+    // from your user database
+    return 'Member ${memberId.substring(0, 4)}';
   }
 
   Widget _buildPaymentMethodDistribution() {

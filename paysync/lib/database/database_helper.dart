@@ -682,6 +682,7 @@ class DatabaseHelper {
 
       // Try to fetch from Firestore first
       try {
+        print('🔄 Starting Firestore fetch for user: $userId');
         final _firestore = firestore.FirebaseFirestore.instance;
         final userDoc = await _firestore.collection('users').doc(userId).get();
 
@@ -692,6 +693,8 @@ class DatabaseHelper {
                   .split(',')
                   .where((e) => e.isNotEmpty)
                   .toList();
+          
+          print('📋 Found ${userEvents.length} events in Firestore for user');
 
           // Fetch all events in parallel
           final eventFutures = userEvents.map(
@@ -703,6 +706,7 @@ class DatabaseHelper {
             if (doc.exists) {
               final data = doc.data()!;
               final eventId = doc.id;
+              print('📥 Processing event: $eventId');
 
               final event = EventModel(
                 eventId: eventId,
@@ -741,6 +745,7 @@ class DatabaseHelper {
               );
 
               // Insert or update event in local database
+              print('💾 Attempting to update local database for event: $eventId');
               await db.insert('events', {
                 'eventId': event.eventId,
                 'nameOfEvent': event.nameOfEvent,
@@ -754,6 +759,20 @@ class DatabaseHelper {
                 'createdAt': event.createdAt.toIso8601String(),
                 'updatedAt': event.updatedAt.toIso8601String(),
               }, conflictAlgorithm: ConflictAlgorithm.replace);
+              
+              // Verify the update
+              final verifyEvent = await db.query(
+                'events',
+                where: 'eventId = ?',
+                whereArgs: [eventId],
+              );
+              print('✅ Local database verification for event $eventId: ${verifyEvent.isNotEmpty ? "SUCCESS" : "FAILED"}');
+              if (verifyEvent.isNotEmpty) {
+                print('📊 Event details in local DB:');
+                print('- Name: ${verifyEvent.first['nameOfEvent']}');
+                print('- Created By: ${verifyEvent.first['createdBy']}');
+                print('- Members: ${verifyEvent.first['members']}');
+              }
 
               // Fetch and store transactions for this event
               if (event.transactions.isNotEmpty) {
@@ -834,41 +853,41 @@ class DatabaseHelper {
           }
         }
       } catch (e) {
-        print('Error fetching from Firestore: $e');
+        print('❌ Error fetching from Firestore: $e');
       }
 
       // Get all events from local database
+      print('🔍 Fetching events from local database');
       final List<Map<String, dynamic>> localResults = await db.query(
         'events',
         where: 'createdBy = ? OR members LIKE ?',
         whereArgs: [userId, '%$userId%'],
         orderBy: 'createdAt DESC',
       );
+      
+      print('📊 Found ${localResults.length} events in local database');
 
-      allEvents =
-          localResults
-              .map(
-                (result) => EventModel(
-                  eventId: result['eventId'],
-                  nameOfEvent: result['nameOfEvent'],
-                  createdBy: result['createdBy'],
-                  transactions:
-                      result['transactions']?.toString().split(',') ?? [],
-                  onlineAmountOfEvent: result['onlineAmountOfEvent'].toDouble(),
-                  offlineAmountOfEvent:
-                      result['offlineAmountOfEvent'].toDouble(),
-                  members: result['members']?.toString().split(',') ?? [],
-                  currency: result['currency'],
-                  budget: result['budget']?.toDouble(),
-                  createdAt: DateTime.parse(result['createdAt']),
-                  updatedAt: DateTime.parse(result['updatedAt']),
-                ),
-              )
-              .toList();
+      allEvents = localResults.map(
+        (result) => EventModel(
+          eventId: result['eventId'],
+          nameOfEvent: result['nameOfEvent'],
+          createdBy: result['createdBy'],
+          transactions:
+              result['transactions']?.toString().split(',') ?? [],
+          onlineAmountOfEvent: result['onlineAmountOfEvent'].toDouble(),
+          offlineAmountOfEvent:
+              result['offlineAmountOfEvent'].toDouble(),
+          members: result['members']?.toString().split(',') ?? [],
+          currency: result['currency'],
+          budget: result['budget']?.toDouble(),
+          createdAt: DateTime.parse(result['createdAt']),
+          updatedAt: DateTime.parse(result['updatedAt']),
+        ),
+      ).toList();
 
       return allEvents;
     } catch (e) {
-      print('Error getting user events: $e');
+      print('❌ Error getting user events: $e');
       return [];
     }
   }

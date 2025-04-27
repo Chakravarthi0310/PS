@@ -6,15 +6,18 @@ import 'package:paysync/database/database_helper.dart';
 import 'package:paysync/utils/currency_formatter.dart';
 import 'package:paysync/utils/currency_converter.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 
 class EventTransactionsScreen extends StatelessWidget {
   final EventModel event;
   final UserModel currentUser;
+  final Map<String, UserModel> members;
 
   const EventTransactionsScreen({
     Key? key,
     required this.event,
     required this.currentUser,
+    required this.members,
   }) : super(key: key);
 
   Future<Map<String, dynamic>> _getTransactionsData() async {
@@ -22,27 +25,141 @@ class EventTransactionsScreen extends StatelessWidget {
     final transactions = <TransactionModel>[];
     final memberData = <String, Map<String, dynamic>>{};
     
-    // Get all transactions
-    for (String transactionId in event.transactions) {
-      final transaction = await db.getTransaction(transactionId);
-      if (transaction != null) {
-        transactions.add(transaction);
+    print('Members passed to screen: ${members.length}');
+    members.forEach((id, user) {
+      print('Member ID: $id, Username: ${user.username}');
+    });
+    
+    // Get all transactions from Firestore first
+    try {
+      final _firestore = firestore.FirebaseFirestore.instance;
+      final eventDoc = await _firestore.collection('events').doc(event.eventId).get();
+      if (eventDoc.exists) {
+        final eventData = eventDoc.data()!;
+        List<String> transactionIds = [];
         
-        // Get member details if not already fetched
-        if (!memberData.containsKey(transaction.userId)) {
-          final user = await db.getUser(transaction.userId);
-          memberData[transaction.userId] = {
-            'name': user?.username ?? 'Unknown',
-            'totalSpent': 0.0,
-            'transactions': 0,
-          };
+        if (eventData['transactions'] != null) {
+          if (eventData['transactions'] is String) {
+            transactionIds = eventData['transactions'].toString().split(',').where((e) => e.isNotEmpty).toList();
+          } else if (eventData['transactions'] is List) {
+            transactionIds = List<String>.from(eventData['transactions']);
+          }
         }
-        
-        // Update member statistics
-        memberData[transaction.userId]!['totalSpent'] += transaction.amount;
-        memberData[transaction.userId]!['transactions']++;
+
+        print('Found ${transactionIds.length} transaction IDs in Firestore');
+        final transactionFutures = transactionIds.map((id) => _firestore.collection('transactions').doc(id).get());
+        final transactionDocs = await Future.wait(transactionFutures);
+
+        for (var doc in transactionDocs) {
+          if (doc.exists) {
+            final data = doc.data()!;
+            final transaction = TransactionModel(
+              transactionId: doc.id,
+              userId: data['userId'],
+              eventId: data['eventId'],
+              isOnline: data['isOnline'] == 1 || data['isOnline'] == true,
+              isCredit: data['isCredit'] == 1 || data['isCredit'] == true,
+              amount: data['amount'].toDouble(),
+              currency: data['currency'],
+              paymentMethod: data['paymentMethod'],
+              location: data['location'],
+              dateTime: data['dateTime'] is firestore.Timestamp 
+                ? (data['dateTime'] as firestore.Timestamp).toDate()
+                : DateTime.parse(data['dateTime']),
+              note: data['note'],
+              imageUrl: data['imageUrl'],
+              recurring: data['recurring'] == 1 || data['recurring'] == true,
+              recurringType: data['recurringType'],
+              createdAt: data['createdAt'] is firestore.Timestamp 
+                ? (data['createdAt'] as firestore.Timestamp).toDate()
+                : DateTime.parse(data['createdAt']),
+              updatedAt: data['updatedAt'] is firestore.Timestamp 
+                ? (data['updatedAt'] as firestore.Timestamp).toDate()
+                : DateTime.parse(data['updatedAt']),
+              onlineBalanceAfter: data['onlineBalanceAfter']?.toDouble() ?? 0.0,
+              offlineBalanceAfter: data['offlineBalanceAfter']?.toDouble() ?? 0.0,
+            );
+
+            print('Processing transaction: ${transaction.transactionId} by user: ${transaction.userId}');
+            
+            // If user not in members map, try to fetch from database
+            if (!members.containsKey(transaction.userId)) {
+              print('User ${transaction.userId} not found in members map, fetching from database...');
+              final user = await db.getUser(transaction.userId);
+              if (user != null) {
+                members[transaction.userId] = user;
+                print('Found user in database: ${user.username}');
+              } else {
+                print('Warning: User ${transaction.userId} not found in database either');
+              }
+            }
+
+            // Store in local database for offline access
+            await db.insertTransaction(transaction);
+            transactions.add(transaction);
+            
+            // Update member statistics using the passed members map
+            if (members.containsKey(transaction.userId)) {
+              final user = members[transaction.userId]!;
+              if (!memberData.containsKey(transaction.userId)) {
+                memberData[transaction.userId] = {
+                  'name': user.username,
+                  'totalSpent': 0.0,
+                  'transactions': 0,
+                  'profileImageUrl': user.profileImageUrl,
+                };
+              }
+              memberData[transaction.userId]!['totalSpent'] += transaction.amount;
+              memberData[transaction.userId]!['transactions']++;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error fetching transactions from Firestore: $e');
+    }
+
+    // If no transactions found in Firestore, try local database
+    if (transactions.isEmpty) {
+      for (String transactionId in event.transactions) {
+        final transaction = await db.getTransaction(transactionId);
+        if (transaction != null) {
+          print('Processing local transaction: ${transaction.transactionId} by user: ${transaction.userId}');
+          
+          // If user not in members map, try to fetch from database
+          if (!members.containsKey(transaction.userId)) {
+            print('User ${transaction.userId} not found in members map, fetching from database...');
+            final user = await db.getUser(transaction.userId);
+            if (user != null) {
+              members[transaction.userId] = user;
+              print('Found user in database: ${user.username}');
+            } else {
+              print('Warning: User ${transaction.userId} not found in database either');
+            }
+          }
+          
+          transactions.add(transaction);
+          
+          // Update member statistics using the passed members map
+          if (members.containsKey(transaction.userId)) {
+            final user = members[transaction.userId]!;
+            if (!memberData.containsKey(transaction.userId)) {
+              memberData[transaction.userId] = {
+                'name': user.username,
+                'totalSpent': 0.0,
+                'transactions': 0,
+                'profileImageUrl': user.profileImageUrl,
+              };
+            }
+            memberData[transaction.userId]!['totalSpent'] += transaction.amount;
+            memberData[transaction.userId]!['transactions']++;
+          }
+        }
       }
     }
+
+    // Sort transactions by date
+    transactions.sort((a, b) => b.dateTime.compareTo(a.dateTime));
 
     return {
       'transactions': transactions,
@@ -186,46 +303,135 @@ class EventTransactionsScreen extends StatelessWidget {
           itemCount: transactions.length,
           itemBuilder: (context, index) {
             final transaction = transactions[index];
-            final member = memberData[transaction.userId];
+            final user = members[transaction.userId];
+            
+            if (user == null) {
+              print('User not found for transaction ${transaction.transactionId}: ${transaction.userId}');
+            }
             
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: ListTile(
-                leading: CircleAvatar(
-                  child: Text(member?['name'][0].toUpperCase() ?? 'U'),
-                ),
-                title: Row(
-                  children: [
-                    Text(member?['name'] ?? 'Unknown'),
-                    const SizedBox(width: 8),
-                    Text(
-                      CurrencyFormatter.format(
-                        transaction.amount,
-                        transaction.currency,
-                      ),
-                      style: TextStyle(
-                        color: transaction.isCredit ? Colors.green : Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                subtitle: Column(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (transaction.note?.isNotEmpty ?? false)
-                      Text(transaction.note!),
-                    Text(
-                      transaction.dateTime.toString().split('.')[0],
-                      style: TextStyle(fontSize: 12),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundImage: user?.profileImageUrl != null 
+                            ? NetworkImage(user!.profileImageUrl)
+                            : null,
+                          child: user?.profileImageUrl == null
+                            ? Text(
+                                user?.username[0].toUpperCase() ?? 'U',
+                                style: TextStyle(color: Colors.white),
+                              )
+                            : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                user?.username ?? 'Unknown User',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                transaction.dateTime.toString().split('.')[0],
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: transaction.isCredit ? Colors.green[50] : Colors.red[50],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                transaction.isOnline ? Icons.account_balance : Icons.money,
+                                size: 16,
+                                color: transaction.isCredit ? Colors.green : Colors.red,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                CurrencyFormatter.format(
+                                  transaction.amount,
+                                  transaction.currency,
+                                ),
+                                style: TextStyle(
+                                  color: transaction.isCredit ? Colors.green : Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (transaction.note?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          transaction.note!,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.payment,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          transaction.paymentMethod,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Icon(
+                          Icons.location_on,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          transaction.location,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-                trailing: Icon(
-                  transaction.isOnline
-                      ? Icons.account_balance
-                      : Icons.money,
-                  color: Colors.grey,
                 ),
               ),
             );
