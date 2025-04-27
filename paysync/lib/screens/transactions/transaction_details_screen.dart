@@ -145,6 +145,107 @@ class TransactionDetailsScreen extends StatelessWidget {
                           Icons.location_on,
                           Colors.green,
                         ),
+                        _buildDetailCard(
+                          'Mode',
+                          transaction.isOnline ? 'Online' : 'Offline',
+                          transaction.isOnline ? Icons.wifi : Icons.wifi_off,
+                          transaction.isOnline ? Colors.teal : Colors.brown,
+                        ),
+                        _buildDetailCard(
+                          'Type',
+                          transaction.isCredit ? 'Credit' : 'Debit',
+                          transaction.isCredit ? Icons.add_circle : Icons.remove_circle,
+                          transaction.isCredit ? Colors.green : Colors.red,
+                        ),
+                      ],
+                    ),
+
+                    // Balance Information
+                    SizedBox(height: 20),
+                    Text(
+                      'Balance After Transaction',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.account_balance_wallet, color: Colors.blue, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Online Balance',
+                                      style: TextStyle(
+                                        color: Colors.blue,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  CurrencyFormatter.format(transaction.onlineBalanceAfter, currentUser.currencyName),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Container(
+                            padding: EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.money_off, color: Colors.orange, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Offline Balance',
+                                      style: TextStyle(
+                                        color: Colors.orange,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  CurrencyFormatter.format(transaction.offlineBalanceAfter, currentUser.currencyName),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
 

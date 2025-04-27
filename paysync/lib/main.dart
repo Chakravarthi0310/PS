@@ -6,6 +6,8 @@ import 'package:paysync/firebase_options.dart';
 import 'package:paysync/screens/splash/splash_screen.dart';
 // import 'package:paysync/services/notification_service.dart';
 import 'package:paysync/services/sync_service.dart';
+import 'package:provider/provider.dart';
+import 'package:paysync/providers/theme_provider.dart';
 
 void main() async {
   try {
@@ -45,14 +47,18 @@ void main() async {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'PaySync',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
+    return ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'PaySync',
+            theme: themeProvider.theme,
+            home: SplashScreen(),
+          );
+        },
       ),
-      home: SplashScreen(),
     );
   }
 }

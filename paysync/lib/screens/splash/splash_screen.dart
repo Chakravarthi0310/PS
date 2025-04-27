@@ -16,6 +16,9 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
+  late Animation<double> _rotationAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<Color?> _colorAnimation;
 
   @override
   void initState() {
@@ -36,6 +39,30 @@ class _SplashScreenState extends State<SplashScreen>
         curve: Interval(0.5, 1.0, curve: Curves.easeIn),
       ),
     );
+
+    _rotationAnimation = Tween<double>(
+      begin: 0.0,
+      end: 2 * 3.14159,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Interval(0.0, 0.5, curve: Curves.easeInOut),
+    ));
+
+    _slideAnimation = Tween<Offset>(
+      begin: Offset(0, 0.5),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Interval(0.3, 0.8, curve: Curves.easeOut),
+    ));
+
+    _colorAnimation = ColorTween(
+      begin: Colors.blue[100],
+      end: Colors.blue[900],
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
 
     _controller.forward();
     _checkLoginStatus();
@@ -86,52 +113,75 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).primaryColor,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ScaleTransition(
-              scale: _scaleAnimation,
-              child: Icon(
-                Icons.account_balance_wallet,
-                size: 100,
-                color: Colors.white,
+      body: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _colorAnimation.value!,
+                  Theme.of(context).primaryColor,
+                ],
               ),
             ),
-            SizedBox(height: 20),
-            FadeTransition(
-              opacity: _opacityAnimation,
-              child: DefaultTextStyle(
-                style: TextStyle(
-                  fontSize: 40,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-                child: AnimatedTextKit(
-                  animatedTexts: [
-                    WavyAnimatedText(
-                      'PaySync',
-                      speed: Duration(milliseconds: 200),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Transform.rotate(
+                    angle: _rotationAnimation.value,
+                    child: ScaleTransition(
+                      scale: _scaleAnimation,
+                      child: Icon(
+                        Icons.account_balance_wallet,
+                        size: 100,
+                        color: Colors.white,
+                      ),
                     ),
-                  ],
-                  isRepeatingAnimation: false,
-                ),
+                  ),
+                  SizedBox(height: 20),
+                  SlideTransition(
+                    position: _slideAnimation,
+                    child: FadeTransition(
+                      opacity: _opacityAnimation,
+                      child: DefaultTextStyle(
+                        style: TextStyle(
+                          fontSize: 40,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                        child: AnimatedTextKit(
+                          animatedTexts: [
+                            WavyAnimatedText(
+                              'PaySync',
+                              speed: Duration(milliseconds: 200),
+                            ),
+                          ],
+                          isRepeatingAnimation: false,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 30),
+                  FadeTransition(
+                    opacity: _opacityAnimation,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        strokeWidth: 3,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            SizedBox(height: 30),
-            FadeTransition(
-              opacity: _opacityAnimation,
-              child: Container(
-                width: 40,
-                height: 40,
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  strokeWidth: 3,
-                ),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

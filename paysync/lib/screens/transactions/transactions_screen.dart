@@ -355,10 +355,44 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (transaction.note?.isNotEmpty ?? false) Text(transaction.note!),
+            if (transaction.note?.isNotEmpty ?? false) 
+              Text(
+                transaction.note!,
+                style: TextStyle(fontSize: 12),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             Text(
               '${transaction.dateTime.toString().split('.')[0]} • ${transaction.location}',
               style: TextStyle(fontSize: 12),
+            ),
+            SizedBox(height: 2),
+            Wrap(
+              spacing: 8,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.account_balance_wallet, size: 12, color: Colors.blue),
+                    SizedBox(width: 2),
+                    Text(
+                      '${CurrencyFormatter.format(transaction.onlineBalanceAfter, widget.currentUser.currencyName)}',
+                      style: TextStyle(fontSize: 11, color: Colors.blue),
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.money_off, size: 12, color: Colors.orange),
+                    SizedBox(width: 2),
+                    Text(
+                      '${CurrencyFormatter.format(transaction.offlineBalanceAfter, widget.currentUser.currencyName)}',
+                      style: TextStyle(fontSize: 11, color: Colors.orange),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),

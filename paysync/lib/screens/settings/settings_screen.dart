@@ -2,8 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:paysync/database/database_helper.dart';
 import 'package:paysync/models/user_model.dart';
+import 'package:paysync/providers/theme_provider.dart';
 import 'package:paysync/screens/auth/login_screen.dart';
 import 'package:paysync/screens/profile/profile_screen.dart';
 import 'package:paysync/utils/currency_converter.dart';
@@ -19,7 +21,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final currentUser = FirebaseAuth.instance.currentUser;
   late Future<UserModel?> userFuture;
   String selectedCurrency = 'USD';
-  bool isDarkMode = false;
   bool notificationsEnabled = true;
 
   @override
@@ -33,14 +34,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() async {
       selectedCurrency = (await userFuture)?.currencyName ?? 'USD';
-      isDarkMode = prefs.getBool('darkMode') ?? false;
       notificationsEnabled = prefs.getBool('notifications') ?? true;
     });
   }
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('darkMode', isDarkMode);
     await prefs.setBool('notifications', notificationsEnabled);
 
     final user = await userFuture;
@@ -92,6 +91,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       appBar: FuturisticAppBar(title: 'Settings'),
       body: FutureBuilder<UserModel?>(
@@ -175,12 +176,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     SwitchListTile(
                       secondary: Icon(Icons.dark_mode),
                       title: Text('Dark Mode'),
-                      value: isDarkMode,
+                      value: themeProvider.isDarkMode,
                       onChanged: (value) {
-                        setState(() {
-                          isDarkMode = value;
-                          _saveSettings();
-                        });
+                        themeProvider.toggleTheme();
                       },
                     ),
                     SwitchListTile(

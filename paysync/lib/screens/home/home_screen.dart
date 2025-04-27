@@ -610,9 +610,42 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ],
         ),
-        subtitle: Text(
-          '${transaction.dateTime.toString().split('.')[0]} • ${transaction.location}',
-          style: TextStyle(color: Colors.grey),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${transaction.dateTime.toString().split('.')[0]} • ${transaction.location}',
+              style: TextStyle(color: Colors.grey),
+            ),
+            SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.account_balance_wallet, size: 12, color: Colors.blue),
+                    SizedBox(width: 2),
+                    Text(
+                      '${CurrencyFormatter.format(transaction.onlineBalanceAfter, _currentUser?.currencyName ?? 'USD')}',
+                      style: TextStyle(fontSize: 11, color: Colors.blue),
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.money_off, size: 12, color: Colors.orange),
+                    SizedBox(width: 2),
+                    Text(
+                      '${CurrencyFormatter.format(transaction.offlineBalanceAfter, _currentUser?.currencyName ?? 'USD')}',
+                      style: TextStyle(fontSize: 11, color: Colors.orange),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,

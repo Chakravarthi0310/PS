@@ -7,8 +7,10 @@ import 'package:paysync/utils/currency_formatter.dart';
 import 'package:paysync/utils/currency_converter.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:provider/provider.dart';
+import 'package:paysync/providers/theme_provider.dart';
 
-class EventTransactionsScreen extends StatelessWidget {
+class EventTransactionsScreen extends StatefulWidget {
   final EventModel event;
   final UserModel currentUser;
   final Map<String, UserModel> members;
@@ -20,20 +22,31 @@ class EventTransactionsScreen extends StatelessWidget {
     required this.members,
   }) : super(key: key);
 
+  @override
+  _EventTransactionsScreenState createState() => _EventTransactionsScreenState();
+}
+
+class _EventTransactionsScreenState extends State<EventTransactionsScreen> {
+  String _selectedFilter = 'All';
+  bool _showOnlyCredits = false;
+  bool _showOnlyDebits = false;
+  bool _showOnlyOnline = false;
+  bool _showOnlyOffline = false;
+
   Future<Map<String, dynamic>> _getTransactionsData() async {
     final db = DatabaseHelper();
     final transactions = <TransactionModel>[];
     final memberData = <String, Map<String, dynamic>>{};
     
-    print('Members passed to screen: ${members.length}');
-    members.forEach((id, user) {
+    print('Members passed to screen: ${widget.members.length}');
+    widget.members.forEach((id, user) {
       print('Member ID: $id, Username: ${user.username}');
     });
     
     // Get all transactions from Firestore first
     try {
       final _firestore = firestore.FirebaseFirestore.instance;
-      final eventDoc = await _firestore.collection('events').doc(event.eventId).get();
+      final eventDoc = await _firestore.collection('events').doc(widget.event.eventId).get();
       if (eventDoc.exists) {
         final eventData = eventDoc.data()!;
         List<String> transactionIds = [];
@@ -83,11 +96,11 @@ class EventTransactionsScreen extends StatelessWidget {
             print('Processing transaction: ${transaction.transactionId} by user: ${transaction.userId}');
             
             // If user not in members map, try to fetch from database
-            if (!members.containsKey(transaction.userId)) {
+            if (!widget.members.containsKey(transaction.userId)) {
               print('User ${transaction.userId} not found in members map, fetching from database...');
               final user = await db.getUser(transaction.userId);
               if (user != null) {
-                members[transaction.userId] = user;
+                widget.members[transaction.userId] = user;
                 print('Found user in database: ${user.username}');
               } else {
                 print('Warning: User ${transaction.userId} not found in database either');
@@ -99,8 +112,8 @@ class EventTransactionsScreen extends StatelessWidget {
             transactions.add(transaction);
             
             // Update member statistics using the passed members map
-            if (members.containsKey(transaction.userId)) {
-              final user = members[transaction.userId]!;
+            if (widget.members.containsKey(transaction.userId)) {
+              final user = widget.members[transaction.userId]!;
               if (!memberData.containsKey(transaction.userId)) {
                 memberData[transaction.userId] = {
                   'name': user.username,
@@ -121,17 +134,17 @@ class EventTransactionsScreen extends StatelessWidget {
 
     // If no transactions found in Firestore, try local database
     if (transactions.isEmpty) {
-      for (String transactionId in event.transactions) {
+      for (String transactionId in widget.event.transactions) {
         final transaction = await db.getTransaction(transactionId);
         if (transaction != null) {
           print('Processing local transaction: ${transaction.transactionId} by user: ${transaction.userId}');
           
           // If user not in members map, try to fetch from database
-          if (!members.containsKey(transaction.userId)) {
+          if (!widget.members.containsKey(transaction.userId)) {
             print('User ${transaction.userId} not found in members map, fetching from database...');
             final user = await db.getUser(transaction.userId);
             if (user != null) {
-              members[transaction.userId] = user;
+              widget.members[transaction.userId] = user;
               print('Found user in database: ${user.username}');
             } else {
               print('Warning: User ${transaction.userId} not found in database either');
@@ -141,8 +154,8 @@ class EventTransactionsScreen extends StatelessWidget {
           transactions.add(transaction);
           
           // Update member statistics using the passed members map
-          if (members.containsKey(transaction.userId)) {
-            final user = members[transaction.userId]!;
+          if (widget.members.containsKey(transaction.userId)) {
+            final user = widget.members[transaction.userId]!;
             if (!memberData.containsKey(transaction.userId)) {
               memberData[transaction.userId] = {
                 'name': user.username,
@@ -167,33 +180,120 @@ class EventTransactionsScreen extends StatelessWidget {
     };
   }
 
+  List<TransactionModel> _filterTransactions(List<TransactionModel> transactions) {
+    return transactions.where((transaction) {
+      if (_selectedFilter != 'All' && transaction.userId != widget.currentUser.userId) {
+        return false;
+      }
+      if (_showOnlyCredits && !transaction.isCredit) return false;
+      if (_showOnlyDebits && transaction.isCredit) return false;
+      if (_showOnlyOnline && !transaction.isOnline) return false;
+      if (_showOnlyOffline && transaction.isOnline) return false;
+      return true;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final theme = themeProvider.theme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Event Transactions'),
+        actions: [
+          PopupMenuButton<String>(
+            icon: Icon(Icons.filter_list),
+            onSelected: (value) {
+              setState(() {
+                _selectedFilter = value;
+              });
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(value: 'All', child: Text('All Transactions')),
+              PopupMenuItem(value: 'Mine', child: Text('My Transactions')),
+            ],
+          ),
+        ],
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _getTransactionsData(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final data = snapshot.data!;
-          final transactions = data['transactions'] as List<TransactionModel>;
-          final memberData = data['memberData'] as Map<String, Map<String, dynamic>>;
-
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.all(8),
+            child: Row(
               children: [
-                _buildMemberInsights(memberData),
-                _buildTransactionsList(transactions, memberData),
+                FilterChip(
+                  label: Text('Credits'),
+                  selected: _showOnlyCredits,
+                  onSelected: (selected) {
+                    setState(() {
+                      _showOnlyCredits = selected;
+                      if (selected) _showOnlyDebits = false;
+                    });
+                  },
+                ),
+                SizedBox(width: 8),
+                FilterChip(
+                  label: Text('Debits'),
+                  selected: _showOnlyDebits,
+                  onSelected: (selected) {
+                    setState(() {
+                      _showOnlyDebits = selected;
+                      if (selected) _showOnlyCredits = false;
+                    });
+                  },
+                ),
+                SizedBox(width: 8),
+                FilterChip(
+                  label: Text('Online'),
+                  selected: _showOnlyOnline,
+                  onSelected: (selected) {
+                    setState(() {
+                      _showOnlyOnline = selected;
+                      if (selected) _showOnlyOffline = false;
+                    });
+                  },
+                ),
+                SizedBox(width: 8),
+                FilterChip(
+                  label: Text('Offline'),
+                  selected: _showOnlyOffline,
+                  onSelected: (selected) {
+                    setState(() {
+                      _showOnlyOffline = selected;
+                      if (selected) _showOnlyOnline = false;
+                    });
+                  },
+                ),
               ],
             ),
-          );
-        },
+          ),
+          Expanded(
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: _getTransactionsData(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final data = snapshot.data!;
+                final transactions = _filterTransactions(data['transactions'] as List<TransactionModel>);
+                final memberData = data['memberData'] as Map<String, Map<String, dynamic>>;
+
+                return SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildMemberInsights(memberData),
+                      _buildTransactionsList(transactions, memberData),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -263,10 +363,10 @@ class EventTransactionsScreen extends StatelessWidget {
                   CurrencyFormatter.format(
                     CurrencyConverter.convert(
                       entry.value['totalSpent'],
-                      event.currency,
-                      currentUser.currencyName,
+                      widget.event.currency,
+                      widget.currentUser.currencyName,
                     ),
-                    currentUser.currencyName,
+                    widget.currentUser.currencyName,
                   ),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
@@ -303,7 +403,7 @@ class EventTransactionsScreen extends StatelessWidget {
           itemCount: transactions.length,
           itemBuilder: (context, index) {
             final transaction = transactions[index];
-            final user = members[transaction.userId];
+            final user = widget.members[transaction.userId];
             
             if (user == null) {
               print('User not found for transaction ${transaction.transactionId}: ${transaction.userId}');
